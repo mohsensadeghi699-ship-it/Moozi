@@ -453,4 +453,37 @@ router.post('/api/extract', async (ctx) => {
       return;
     }
     
-    const images = await searcher.getPack
+    const images = await searcher.getPackageImages(drugInfo.url);
+    
+    if (!images || images.length === 0) {
+      ctx.response.status = 404;
+      ctx.response.body = { error: 'No images found' };
+      return;
+    }
+    
+    const result = await extractor.processDrug(drugInfo, images);
+    ctx.response.body = result;
+  } catch (error) {
+    ctx.response.status = 500;
+    ctx.response.body = { error: error.message };
+  }
+});
+
+// Enable CORS
+app.use(oakCors());
+app.use(router.routes());
+app.use(router.allowedMethods());
+
+// ============================================================
+// START SERVER
+// ============================================================
+
+console.log("=".repeat(60));
+console.log("🏥 DailyMed Label Extractor - Deno Deploy");
+console.log("=".repeat(60));
+console.log("🌐 Server running on: " + Deno.env.get("DENO_DEPLOY_URL") || "http://localhost:8000");
+console.log("=".repeat(60));
+console.log("💡 Try searching: Adalimumab, Humira, Lipitor");
+console.log("=".repeat(60));
+
+await app.listen({ port: 8000 });
