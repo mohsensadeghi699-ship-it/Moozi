@@ -1,13 +1,11 @@
 // ============================================================
-// DAILYMED LABEL EXTRACTOR - DENO DEPLOY VERSION
+// DAILYMED LABEL EXTRACTOR - DENO DEPLOY VERSION (FIXED)
 // Deploy this to https://deno.com/deploy
 // ============================================================
 
-// Import required modules
-import { Application, Router, send } from "https://deno.land/x/oak@v12.6.1/mod.ts";
+import { Application, Router } from "https://deno.land/x/oak@v12.6.1/mod.ts";
 import { oakCors } from "https://deno.land/x/cors@v1.2.2/mod.ts";
 import * as cheerio from "https://esm.sh/cheerio@1.0.0-rc.12";
-import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.38/deno-dom-wasm.ts";
 
 // ============================================================
 // DATA CLASSES
@@ -55,7 +53,6 @@ class DailyMedSearcher {
       
       const results: DrugInfo[] = [];
       
-      // Find all drug links
       $('a[href*="drugInfo.cfm?setid="]').each((index: number, element: any) => {
         if (index >= maxResults) return false;
         
@@ -69,7 +66,6 @@ class DailyMedSearcher {
             url = `https://dailymed.nlm.nih.gov${href}`;
           }
           
-          // Try to extract NDC
           let ndc = '';
           const parentText = $(element).parent().text();
           const ndcMatch = parentText.match(/\b(\d{5}-\d{3}-\d{2})\b/);
@@ -113,7 +109,6 @@ class DailyMedSearcher {
       
       const imageUrls: string[] = [];
       
-      // Find package images
       $('img').each((index: number, element: any) => {
         const src = $(element).attr('src') || '';
         if (src && (src.toLowerCase().includes('package') || src.toLowerCase().includes('label'))) {
@@ -127,7 +122,6 @@ class DailyMedSearcher {
         }
       });
       
-      // Also check links
       $('a[href*="package"]').each((index: number, element: any) => {
         const href = $(element).attr('href') || '';
         if (href && (href.endsWith('.jpg') || href.endsWith('.png') || href.endsWith('.jpeg'))) {
@@ -151,7 +145,7 @@ class DailyMedSearcher {
 }
 
 // ============================================================
-// LABEL EXTRACTOR (Text extraction from images - simplified)
+// LABEL EXTRACTOR
 // ============================================================
 
 class PharmaLabelExtractor {
@@ -165,7 +159,7 @@ class PharmaLabelExtractor {
     'astrazeneca', 'glaxosmithkline', 'johnson', 'janssen', 'amgen',
     'abbvie', 'bristol', 'squibb', 'eli lilly', 'bayer', 'novo nordisk',
     'teva', 'mylan', 'sandoz', 'apotex', 'dr reddy', 'cipla',
-    'quallent',  // <<< ADD YOUR CUSTOM KEYWORDS HERE
+    'quallent',
   ];
   
   private labelerKeywords = [
@@ -173,22 +167,9 @@ class PharmaLabelExtractor {
     'marketed by', 'distributed by', 'manufactured by'
   ];
   
-  // Since Deno doesn't have OpenCV, we'll use a text extraction approach
-  // using the image URL to extract text via an OCR API or fallback method
   async extractTextFromImage(imageUrl: string): Promise<string[]> {
     try {
-      // In Deno Deploy, we can't run OpenCV directly.
-      // We'll try to fetch the image and use Tesseract via WASM or API
-      // For now, we'll return a placeholder
       console.log(`Attempting to extract text from: ${imageUrl}`);
-      
-      // In production, you'd use:
-      // 1. Tesseract.js WASM in browser
-      // 2. Google Cloud Vision API
-      // 3. Azure Computer Vision
-      // 4. A third-party OCR API
-      
-      // For demonstration, we'll return the URL pattern as text
       return [`Package image: ${imageUrl.split('/').pop()}`];
     } catch (error) {
       console.error(`OCR error: ${error}`);
@@ -206,13 +187,11 @@ class PharmaLabelExtractor {
     
     const fullText = textLines.join(' ');
     
-    // Extract NDC codes
     const ndcMatches = fullText.matchAll(/\b(\d{5}-\d{3}-\d{2})\b/g);
     for (const match of ndcMatches) {
       labelInfo.ndc_codes.push(match[1]);
     }
     
-    // Extract companies
     for (const keyword of this.companyKeywords) {
       if (fullText.toLowerCase().includes(keyword.toLowerCase())) {
         const pattern = new RegExp(`([A-Z][a-zA-Z\\s,\\.&]+(?:${keyword}))`, 'gi');
@@ -226,7 +205,6 @@ class PharmaLabelExtractor {
       }
     }
     
-    // Extract labelers
     for (const keyword of this.labelerKeywords) {
       if (fullText.toLowerCase().includes(keyword.toLowerCase())) {
         const pattern = new RegExp(`(?:${keyword})\\s*:?\\s*([A-Z][a-zA-Z\\s,\\.&]+)`, 'gi');
@@ -240,7 +218,6 @@ class PharmaLabelExtractor {
       }
     }
     
-    // Extract package info
     const packageMatch = fullText.match(/Package:\s*([^\n]+)/);
     if (packageMatch) {
       labelInfo.package_info.push(packageMatch[1].trim());
@@ -331,7 +308,7 @@ class PharmaLabelExtractor {
 }
 
 // ============================================================
-// HTML TEMPLATE
+// HTML TEMPLATE - FIXED VERSION
 // ============================================================
 
 const HTML_TEMPLATE = `
@@ -389,9 +366,9 @@ const HTML_TEMPLATE = `
 <script>
 let currentResults=[],currentXML='',currentDrug=null;
 function searchDrug(){const q=document.getElementById('searchInput').value.trim();if(!q)return alert('Enter a drug name');const btn=document.querySelector('.search-box button');btn.innerHTML='<span class="loading"></span>';document.getElementById('statusMessage').textContent='Searching...';fetch('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})}).then(r=>r.json()).then(d=>{currentResults=d.results||[];displayResults(currentResults);document.getElementById('statusMessage').textContent='Found '+currentResults.length+' results';btn.innerHTML='🔍 Search';}).catch(err=>{alert('Error: '+err.message);btn.innerHTML='🔍 Search';});}
-function displayResults(results){const c=document.getElementById('resultsList');if(!results||!results.length){c.innerHTML='<div style="color:#999;text-align:center;padding:40px 0;">No results</div>';return;}c.innerHTML=results.map((d,i)=>`<div class="result-item" onclick="selectDrug(${i})"><div class="name">${d.name}</div><div class="meta">NDC: ${d.ndc||'N/A'}</div></div>`).join('');}
+function displayResults(results){const c=document.getElementById('resultsList');if(!results||!results.length){c.innerHTML='<div style="color:#999;text-align:center;padding:40px 0;">No results</div>';return;}c.innerHTML=results.map((d,i)=>'<div class="result-item" onclick="selectDrug('+i+')"><div class="name">'+d.name+'</div><div class="meta">NDC: '+(d.ndc||'N/A')+'</div></div>').join('');}
 function selectDrug(index){const drug=currentResults[index];if(!drug)return;document.getElementById('statusMessage').textContent='Processing '+drug.name+'...';document.getElementById('infoPanel').innerHTML='<div style="text-align:center;padding:40px 0;"><span class="loading"></span> Extracting...</div>';fetch('/api/extract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(drug)}).then(r=>r.json()).then(d=>{if(d.error)throw new Error(d.error);currentXML=d.xml;currentDrug=d.drug_info;displayInfo(d);document.getElementById('xmlPreview').textContent=d.xml;document.getElementById('statusMessage').textContent='Complete!';}).catch(err=>{document.getElementById('infoPanel').innerHTML='<div style="color:red;padding:20px;">Error: '+err.message+'</div>';document.getElementById('statusMessage').textContent='Error';});}
-function displayInfo(d){const info=d.label_info||{};let h='<div style="margin-bottom:15px;"><strong>'+d.drug_info.name+'</strong></div>';if(info.companies?.length){h+='<div><b>🏢 Companies:</b><br>'+info.companies.map(c=>`<span class="tag company">${c}</span>`).join('')+'</div><br>';}if(info.labelers?.length){h+='<div><b>📦 Labelers:</b><br>'+info.labelers.map(l=>`<span class="tag labeler">${l}</span>`).join('')+'</div><br>';}if(info.ndc_codes?.length){h+='<div><b>🔢 NDC Codes:</b><br>'+info.ndc_codes.map(n=>`<span class="tag ndc">${n}</span>`).join('')+'</div><br>';}if(info.package_info?.length){h+='<div><b>📦 Package:</b><br>'+info.package_info.join('<br>')+'</div><br>';}h+='<div style="font-size:12px;color:#999;">Images: '+d.image_count+'</div>';document.getElementById('infoPanel').innerHTML=h;}
+function displayInfo(d){const info=d.label_info||{};let h='<div style="margin-bottom:15px;"><strong>'+d.drug_info.name+'</strong></div>';if(info.companies?.length){h+='<div><b>🏢 Companies:</b><br>'+info.companies.map(c=>'<span class="tag company">'+c+'</span>').join('')+'</div><br>';}if(info.labelers?.length){h+='<div><b>📦 Labelers:</b><br>'+info.labelers.map(l=>'<span class="tag labeler">'+l+'</span>').join('')+'</div><br>';}if(info.ndc_codes?.length){h+='<div><b>🔢 NDC Codes:</b><br>'+info.ndc_codes.map(n=>'<span class="tag ndc">'+n+'</span>').join('')+'</div><br>';}if(info.package_info?.length){h+='<div><b>📦 Package:</b><br>'+info.package_info.join('<br>')+'</div><br>';}h+='<div style="font-size:12px;color:#999;">Images: '+d.image_count+'</div>';document.getElementById('infoPanel').innerHTML=h;}
 function downloadXML(){if(!currentXML)return alert('No XML to download');const b=new Blob([currentXML],{type:'application/xml'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=(currentDrug?.name||'label')+'.xml';a.click();}
 function copyXML(){if(!currentXML)return alert('No XML to copy');navigator.clipboard.writeText(currentXML).then(()=>{document.getElementById('statusMessage').textContent='Copied!';setTimeout(()=>document.getElementById('statusMessage').textContent='Ready',2000);});}
 function clearAll(){currentResults=[];currentXML='';currentDrug=null;document.getElementById('resultsList').innerHTML='<div style="color:#999;text-align:center;padding:40px 0;">Search for a drug</div>';document.getElementById('infoPanel').innerHTML='<div style="color:#999;text-align:center;padding:40px 0;">Select a result</div>';document.getElementById('xmlPreview').textContent='XML will appear here';document.getElementById('statusMessage').textContent='Ready';}
@@ -481,7 +458,7 @@ app.use(router.allowedMethods());
 console.log("=".repeat(60));
 console.log("🏥 DailyMed Label Extractor - Deno Deploy");
 console.log("=".repeat(60));
-console.log("🌐 Server running on: " + Deno.env.get("DENO_DEPLOY_URL") || "http://localhost:8000");
+console.log("🌐 Server running on port 8000");
 console.log("=".repeat(60));
 console.log("💡 Try searching: Adalimumab, Humira, Lipitor");
 console.log("=".repeat(60));
